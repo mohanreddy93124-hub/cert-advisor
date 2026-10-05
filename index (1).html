@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cert Advisor – find the right security certification</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#14213d;--mute:#5b6677;--line:#d9dfe7;--acc:#0f766e;--accbg:#e1f3f1;--warn:#b45309;--warnbg:#fdf0dc}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0e1522;--card:#17202f;--ink:#e8edf5;--mute:#9aa7ba;--line:#2a3649;--acc:#4fd1c0;--accbg:#12332f;--warn:#f0b35a;--warnbg:#3a2a12}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:28px 18px 60px}
+h1,h2{font-family:Georgia,"Iowan Old Style",serif;line-height:1.2;margin:0 0 6px}
+h1{font-size:2rem}h2{font-size:1.45rem}
+.sub{color:var(--mute);margin:0 0 22px}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-bottom:26px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);transition:width .25s}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:18px 0}
+.opt{background:var(--card);border:2px solid var(--line);border-radius:10px;padding:14px;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.opt:hover{border-color:var(--acc)}
+.opt[aria-pressed=true]{border-color:var(--acc);background:var(--accbg)}
+.btn{font:inherit;font-weight:600;border:0;border-radius:8px;padding:11px 20px;cursor:pointer;background:var(--acc);color:#fff}
+@media(prefers-color-scheme:dark){.btn{color:#08201c}}
+.btn.alt{background:transparent;color:var(--ink);border:2px solid var(--line)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.res{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:14px 0}
+.res.top{border:2px solid var(--acc)}
+.head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.score{font-family:Georgia,serif;font-size:1.9rem;color:var(--acc);white-space:nowrap}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:12px 0;font-size:.92rem}
+.facts b{display:block;color:var(--mute);font-weight:500;font-size:.8rem}
+ul{margin:8px 0 0;padding-left:20px}li{margin:3px 0}
+.warn{background:var(--warnbg);color:var(--warn);border-radius:8px;padding:8px 12px;font-size:.9rem;margin-top:10px}
+.path{background:var(--accbg);border-radius:10px;padding:14px 18px;margin:16px 0}
+.note{font-size:.85rem;color:var(--mute);margin-top:26px}
+@media print{.row,.bar{display:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Cert Advisor</h1>
+  <p class="sub">Answer 5 short questions and get a ranked list of certifications that fit your business.</p>
+  <div class="bar"><i id="prog"></i></div>
+  <div id="app"></div>
+  <p class="note">Open source (MIT code, CC BY-SA data). Costs and timelines are rough placeholder estimates, not advice. Always confirm with an accredited auditor.</p>
+</main>
+
+<script>
+/* ============ DATA: add or edit certifications here (one object each) ============
+   reg: how strongly the cert is expected per region (0-1). needs: data flag that makes it applicable.
+   cost = first-year USD [min,max]; months = time to certificate [min,max].
+   sources: add official links and update "verified" once you confirm the numbers. */
+const CERTS = [
+ {id:"iso27001",name:"ISO/IEC 27001",desc:"International standard for an information security management system (ISMS).",
+  reg:{in:.9,eu:.9,me:.9,us:.6},cost:[8000,40000],months:[4,10],effort:"High",valid:"3 years, yearly surveillance audits",
+  prereq:"Risk assessment, core security policies, named owner",overlap:"Foundation for ISO 27701, ISO 42001 and much of SOC 2",base:12,verified:false,sources:[]},
+ {id:"soc2",name:"SOC 2 (Type I / II)",desc:"Audit report on your controls by a CPA firm. An attestation, not a certificate.",
+  reg:{us:1,in:.5,eu:.4,me:.3},cloud:true,cost:[10000,50000],months:[3,12],effort:"High",valid:"Report renewed every year",
+  prereq:"Security policies, access control, evidence collection",overlap:"Roughly half of controls overlap with ISO 27001",base:10,verified:false,sources:[]},
+ {id:"iso27701",name:"ISO/IEC 27701",desc:"Privacy extension to ISO 27001 for managing personal data.",
+  reg:{eu:.9,in:.7,me:.5,us:.4},needs:"personal",cost:[5000,20000],months:[2,6],effort:"Medium",valid:"Tied to the ISO 27001 cycle",
+  prereq:"ISO 27001 (or done together)",overlap:"Builds directly on ISO 27001",base:6,verified:false,sources:[]},
+ {id:"pci",name:"PCI DSS",desc:"Required if you store, process or transmit payment card data.",
+  reg:{in:.8,eu:.8,us:.8,me:.8},needs:"cards",mandatory:true,cost:[5000,60000],months:[3,9],effort:"High",valid:"Yearly assessment",
+  prereq:"Card data flow map, network segmentation",overlap:"Some overlap with ISO 27001 controls",base:10,verified:false,sources:[]},
+ {id:"hipaa",name:"HIPAA compliance",desc:"US law for protected health information. Compliance is assessed, not certified.",
+  reg:{us:1,in:.2,eu:.1,me:.1},needs:"health",mandatory:true,cost:[5000,30000],months:[2,8],effort:"Medium",valid:"Ongoing; review yearly",
+  prereq:"Risk analysis, business associate agreements",overlap:"Strong overlap with SOC 2",base:8,verified:false,sources:[]},
+ {id:"iso42001",name:"ISO/IEC 42001",desc:"Management system standard for responsible AI.",
+  reg:{eu:.8,in:.5,me:.5,us:.5},needs:"ai",cost:[8000,30000],months:[4,9],effort:"Medium",valid:"3 years, yearly surveillance audits",
+  prereq:"AI inventory and risk process; ISO 27001 helps",overlap:"Shares management-system structure with ISO 27001",base:6,verified:false,sources:[]},
+ {id:"iso22301",name:"ISO 22301",desc:"Business continuity: keep operating through outages and disasters.",
+  reg:{in:.6,eu:.7,me:.7,us:.4},cost:[6000,25000],months:[4,9],effort:"Medium",valid:"3 years, yearly surveillance audits",
+  prereq:"Business impact analysis, recovery plans",overlap:"Management-system overlap with ISO 27001",base:4,verified:false,sources:[]},
+ {id:"ce",name:"Cyber Essentials (UK)",desc:"Low-cost baseline security scheme, often needed for UK public contracts.",
+  reg:{eu:.7,in:.2,us:.1,me:.2},cost:[500,3000],months:[1,2],effort:"Low",valid:"12 months",
+  prereq:"Firewalls, patching, malware protection, access control",overlap:"A light first step toward ISO 27001",base:3,verified:false,sources:[]}
+];
+
+/* ============ QUESTIONS ============ */
+const STEPS = [
+ {id:"regions",t:"Where are your customers?",s:"Pick all that apply.",multi:true,o:[["in","India"],["eu","EU / UK"],["us","United States"],["me","Middle East / Asia-Pacific"]]},
+ {id:"data",t:"What do you handle?",s:"Pick all that apply, or none.",multi:true,optional:true,o:[["personal","Personal data of customers"],["cards","Payment card data"],["health","Health data (US)"],["ai","We build or sell AI products"],["cloud","We run a cloud-hosted service"]]},
+ {id:"budget",t:"What is your first-year budget?",s:"Audit fees, consultants, tools. In US dollars.",o:[[3000,"Under $3,000"],[10000,"$3,000 – $10,000"],[30000,"$10,000 – $30,000"],[100000,"$30,000 or more"]]},
+ {id:"months",t:"When do you need it?",s:"",o:[[3,"Within 3 months"],[6,"Within 6 months"],[12,"Within 12 months"]]},
+ {id:"priority",t:"What matters most?",s:"This shifts the ranking.",o:[["cost","Keeping cost low"],["speed","Getting it fast"],["balanced","A balance"]]}
+];
+
+/* ============ SCORING: transparent and easy to change ============ */
+function score(c,a){
+  if(c.needs && !a.data.includes(c.needs)) return null;       // filter out
+  let s=c.base, why=[], warn=[];
+  const r=Math.max(0,...a.regions.map(x=>c.reg[x]||0));
+  s+=r*35; if(r>=.8) why.push("Widely expected in your target market(s)");
+  if(c.needs){s+=25; why.push(c.mandatory?"Required for the data you handle":"Applies to the data you handle");}
+  if(c.cloud && a.data.includes("cloud")){s+=6; why.push("Common ask for cloud-hosted services");}
+  const cw=a.priority==="cost"?1.4:1, sw=a.priority==="speed"?1.4:1;
+  if(c.cost[0]<=a.budget){s+=18*cw; why.push("Minimum cost fits your budget");}
+  else{s-=15*cw; warn.push("Typical minimum cost is above your budget");}
+  if(c.months[0]<=a.months){s+=12*sw; if(c.months[1]<=a.months) why.push("Usually achievable by your deadline");}
+  else{s-=10*sw; warn.push("Usually takes longer than your deadline");}
+  if(c.cost[1]>a.budget && c.cost[0]<=a.budget) warn.push("Larger scopes could exceed your budget");
+  return {c,s:Math.max(5,Math.min(99,Math.round(s))),why,warn};
+}
+function rank(a){return CERTS.map(c=>score(c,a)).filter(Boolean).sort((x,y)=>y.s-x.s).slice(0,5);}
+
+/* ============ UI ============ */
+const $=id=>document.getElementById(id);
+let step=0, ans={regions:[],data:[],budget:null,months:null,priority:null};
+const money=n=>"$"+n.toLocaleString("en-US");
+
+function wizard(){
+  const q=STEPS[step], cur=ans[q.id];
+  $("prog").style.width=((step+1)/(STEPS.length+1)*100)+"%";
+  $("app").innerHTML=`<h2>${q.t}</h2><p class="sub">${q.s}</p><div class="opts" role="group" aria-label="${q.t}">`+
+   q.o.map(([v,l])=>`<button class="opt" data-v="${v}" aria-pressed="${q.multi?cur.includes(v):cur===v}">${l}</button>`).join("")+
+   `</div><div class="row">${step?'<button class="btn alt" id="back">Back</button>':""}<button class="btn" id="next" ${ready()?"":"disabled"}>${step===STEPS.length-1?"See my results":"Next"}</button></div>`;
+  document.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
+    const v=isNaN(b.dataset.v)?b.dataset.v:Number(b.dataset.v);
+    if(q.multi) ans[q.id]=cur.includes(v)?cur.filter(x=>x!==v):[...cur,v]; else ans[q.id]=v;
+    wizard();
+  });
+  if($("back")) $("back").onclick=()=>{step--;wizard();};
+  $("next").onclick=()=>{ if(step<STEPS.length-1){step++;wizard();} else results(); };
+}
+function ready(){const q=STEPS[step],v=ans[q.id]; return q.optional||(q.multi?v.length>0:v!==null);}
+
+function card(r,i){
+  const c=r.c;
+  return `<article class="res ${i===0?"top":""}"><div class="head"><div><h2>${i===0?"Best match: ":""}${c.name}</h2><span class="sub">${c.desc}</span></div><div class="score" aria-label="Fit score">${r.s}%</div></div>
+  <div class="facts"><div><b>Estimated cost</b>${money(c.cost[0])} – ${money(c.cost[1])}</div><div><b>Time to get it</b>${c.months[0]}–${c.months[1]} months</div><div><b>Effort</b>${c.effort}</div><div><b>Validity</b>${c.valid}</div></div>
+  <b>Why it fits</b><ul>${r.why.map(w=>`<li>${w}</li>`).join("")||"<li>General security value</li>"}</ul>
+  <p><b>Before you start:</b> ${c.prereq}.</p>
+  ${r.warn.map(w=>`<div class="warn">${w}</div>`).join("")}
+  ${c.verified?"":'<p class="note" style="margin-top:10px">Placeholder estimate. Not yet verified against sources.</p>'}</article>`;
+}
+function results(){
+  $("prog").style.width="100%";
+  const list=rank(ans);
+  location.hash=btoa(JSON.stringify(ans));
+  const top=list[0], follow=list.slice(1).filter(r=>/ISO 27001/.test(r.c.prereq+r.c.overlap)&&top&&top.c.id==="iso27001");
+  $("app").innerHTML=`<h2>Your recommended certifications</h2><p class="sub">Ranked by fit for your answers.</p>`+
+   (list.length?list.map(card).join(""):"<p>No certifications matched. Try adding a region.</p>")+
+   (follow.length?`<div class="path"><b>Suggested path:</b> ${top.c.name} first, then ${follow.map(f=>f.c.name).join(" and ")}. They reuse many of the same controls.</div>`:"")+
+   `<div class="row"><button class="btn" id="copy">Copy shareable link</button><button class="btn alt" onclick="print()">Save as PDF</button><button class="btn alt" id="again">Start over</button></div>`;
+  $("copy").onclick=async e=>{try{await navigator.clipboard.writeText(location.href);e.target.textContent="Link copied";}catch{e.target.textContent="Copy the address bar link";}};
+  $("again").onclick=()=>{history.replaceState(null,"",location.pathname);step=0;ans={regions:[],data:[],budget:null,months:null,priority:null};wizard();};
+}
+
+try{ if(location.hash.length>1){ans=JSON.parse(atob(location.hash.slice(1)));results();} else wizard(); }catch{ wizard(); }
+</script>
+</body>
+</html>
